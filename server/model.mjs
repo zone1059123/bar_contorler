@@ -5,6 +5,16 @@ export const sum = (xs, fn) => round(xs.reduce((a, x) => a + fn(x), 0))
 export const total = entry => entry ? round(entry.whole + entry.open) : null
 export const dateKey = (at = Date.now()) => new Date(at + 8 * 3600000).toISOString().slice(0, 10)
 export const midnight = key => Date.parse(key + 'T00:00:00+08:00')
+export function mondayKey(at=Date.now()) {
+  const weekday=new Date(at+8*3600000).getUTCDay()
+  return dateKey(at-((weekday+6)%7)*DAY)
+}
+export const taipeiTime = (at=Date.now()) => new Date(at+8*3600000).toISOString().slice(0,16)
+export function parseTaipeiTime(value) {
+  if (typeof value!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(value)) return NaN
+  const time=Date.parse(value+'+08:00')
+  return Number.isFinite(time)&&taipeiTime(time)===value?time:NaN
+}
 export const ordered = events => [...events].sort((a,b) => a.at-b.at)
 
 export function stock(events, item, cutoff = Infinity) {

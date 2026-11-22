@@ -12,7 +12,8 @@
     "build": "vite build && node scripts/build-worker.mjs",
     "check": "tsc --noEmit",
     "test": "node --test scripts/*.test.mjs",
-    "sample": "node scripts/sample.mjs"
+    "sample": "node scripts/sample.mjs",
+    "deploy": "node scripts/deploy-cloudflare.mjs"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.8.0",
-    "vite": "^6.4.0"
+    "vite": "^6.4.0",
+    "wrangler": "^4.166.0"
   }
 }

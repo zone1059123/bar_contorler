@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "BARKEEP 酒吧營運管理",
+  "short_name": "BARKEEP",
+  "lang": "zh-Hant-TW",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f2",
+  "theme_color": "#13201a",
+  "icons": [
+    {"src":"/barkeep-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/barkeep-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

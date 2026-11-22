@@ -4,6 +4,9 @@ export const FLOORS:Floor[]
 export const INGREDIENTS:Record<string,string>
 export function dateKey(at?:number):string
 export function midnight(key:string):number
+export function mondayKey(at?:number):string
+export function taipeiTime(at?:number):string
+export function parseTaipeiTime(value:unknown):number
 export function total(slot:Slot|null|undefined):number|null
 export function stock(events:Entry[],item:string,cutoff?:number):Record<Floor,Slot|null>
 export function suggestIngredient(name:string):string

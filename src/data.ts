@@ -1,6 +1,6 @@
-import {DAY,dateKey,midnight,INGREDIENTS} from '../server/model.mjs'
+import {DAY,dateKey,midnight,mondayKey,taipeiTime,parseTaipeiTime,INGREDIENTS} from '../server/model.mjs'
 import type {State,Floor,Entry} from './types'
-export {DAY,dateKey,midnight,INGREDIENTS}
+export {DAY,dateKey,midnight,taipeiTime,parseTaipeiTime,INGREDIENTS}
 export const floors: Floor[]=['1F','3F']
 export const short=(n:number|null|undefined,digits=2)=>n==null?'—':n.toLocaleString('zh-TW',{maximumFractionDigits:digits})
 export const money=(n:number|null|undefined)=>n==null?'—':'NT$ '+short(n)
@@ -9,7 +9,7 @@ export const asNumber=(v:string)=>v.trim()===''?null:Number(v)
 export const shift=(date:string,days:number)=>dateKey(midnight(date)+days*DAY)
 export function period(kind:string) {
   const today=dateKey()
-  const start=kind==='month'?today.slice(0,8)+'01':shift(today,-((new Date(midnight(today)+8*3600000).getUTCDay()+6)%7))
+  const start=kind==='month'?today.slice(0,8)+'01':mondayKey()
   return {start,end:today}
 }
 export const recipes = [
@@ -49,5 +49,5 @@ export function sample(now=Date.now()):State {
     return {id,name,category,price,ml,ingredient}
   })
   const sales=Array.from({length:14},(_,i)=>({date:dateKey(now-i*DAY),beverage:5280+i*156,overall:6750+i*238,extra:i===0?350:50}))
-  return {items,events,sales,applied:[]}
+  return {items,events,sales,drafts:[],applied:[]}
 }

@@ -11,14 +11,14 @@ export function Modal({title,onClose,children,wide=false}:{title:string;onClose:
   useEffect(()=>{ref.current?.showModal()},[])
   return <dialog ref={ref} className={wide?'dialog wide':'dialog'} aria-label={title} onCancel={e=>{e.preventDefault();onClose()}} onClick={e=>{if(e.target===ref.current)onClose()}}><div className="dialog-inner"><div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" onClick={onClose} aria-label="關閉"><X size={21}/></button></div>{children}</div></dialog>
 }
-export function Form({onSubmit,onDone,children,label='儲存'}:{onSubmit:(data:FormData)=>Promise<void>;onDone:()=>void;children:ReactNode;label?:string}) {
+export function Form({onSubmit,onDone,children,label='儲存'}:{onSubmit:(data:FormData)=>Promise<void|false>;onDone:()=>void;children:ReactNode;label?:string}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState('')
   async function submit(e:FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if(busy)return
     const data=new FormData(e.currentTarget)
     setBusy(true);setError('')
-    try {await onSubmit(data);onDone()} catch(e) {setError(e instanceof Error?e.message:'操作失敗')} finally {setBusy(false)}
+    try {if(await onSubmit(data)!==false)onDone()} catch(e) {setError(e instanceof Error?e.message:'操作失敗')} finally {setBusy(false)}
   }
   return <form onSubmit={submit} className="form"><div className="form-fields">{children}</div>{error&&<div className="notice danger" role="alert">{error}</div>}<div className="dialog-actions"><button className="btn primary" disabled={busy}>{busy?'儲存中…':label}</button></div></form>
 }

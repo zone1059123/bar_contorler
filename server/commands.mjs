@@ -1,6 +1,7 @@
-import {FLOORS, INGREDIENTS, stock, total, sum, dateKey, midnight, round} from './model.mjs'
-export const empty = () => ({items:[],events:[],sales:[],applied:[]})
-const fail = message => {throw new Error(message)}
+import {FLOORS, INGREDIENTS, stock, total, sum, dateKey, midnight, round, parseTaipeiTime, taipeiTime} from './model.mjs'
+import {firstInvalidTransfer} from './backup.mjs'
+export const empty = () => ({items:[],events:[],sales:[],drafts:[],applied:[]})
+const fail = (message,code) => {throw Object.assign(new Error(message),{code})}
 const str = (v, label, max = 120) => typeof v==='string' && v.trim() && v.trim().length<=max ? v.trim() : fail(label+'格式錯誤')
 function num(v,label,{min=0,max=1000000000,integer=false,nullable=false}={}) {
   if (v===null && nullable) return null
@@ -27,6 +28,7 @@ function params(p) {
 
 export function mutate(current, command, now=Date.now(), makeId=()=>crypto.randomUUID()) {
   const s=structuredClone(current)
+  s.drafts??=[]
   const {kind,body,id}=command
   str(id,'操作識別碼',80)
   if (s.applied.includes(id)) return current
@@ -40,10 +42,37 @@ export function mutate(current, command, now=Date.now(), makeId=()=>crypto.rando
     else s.items.push({id:makeId(),...values})
     return existing??s.items.at(-1)
   }
+  const historical = new Set()
+  const countKeys = new Set()
+  const countedAt = value => {
+    const t=parseTaipeiTime(value)
+    if (!Number.isFinite(t) || t>at) fail('請選擇有效的台北時間，且不可晚於目前時間。')
+    return t
+  }
   const addCount = (i,f,value,ts=at) => {
-    const movement=s.events.some(e=>e.item===i && (e.floor===f || e.to===f) && e.at>ts)
-    if (movement) fail('該樓層已有比此日期更新的紀錄，請確認盤點時間')
-    event('count',i,{floor:f,...slot(value)},ts)
+    const item=lookup(s,i)
+    const key=i+'|'+f+'|'+ts
+    if (countKeys.has(key)) fail(item.name+' '+f+' 有重複的盤點時間。')
+    countKeys.add(key)
+    const newer=s.events.some(e=>e.item===i&&(e.floor===f||e.to===f)&&e.at>ts)
+    if (newer) {
+      if (!body.confirmBackfill) fail(item.name+' '+f+' 已有較新的紀錄。請核對盤點時間，確認後可依時間順序重新計算。','confirmBackfill')
+      historical.add(i)
+    }
+    const actual=slot(value)
+    if (kind==='count' && !body.confirmJump) {
+      const previous=stock(s.events,i,ts)[f]
+      const priorReceipt=previous&&s.events.some(e=>e.type==='receipt'&&e.item===i&&e.floor===f&&e.at>previous.at&&e.at<=ts)
+      const jump=previous?round(total(actual)-total(previous)):0
+      if (previous&&!priorReceipt&&jump>=Math.max(2,total(previous)*0.5)) {
+        fail(item.name+' '+f+' 此次為 '+total(actual)+' 支，比記錄多 '+jump+' 支，期間沒有到貨。請核對數字再確認。','confirmJump')
+      }
+    }
+    const existing=s.events.findLast(e=>e.type==='count'&&e.item===i&&e.floor===f&&e.at===ts)
+    if (existing && ts!==at) {
+      historical.add(i)
+      Object.assign(existing,actual)
+    } else event('count',i,{floor:f,...actual},ts)
   }
   const addReceipt = (i,f,qty,price,orderId,ts=at) => {
     if (orderId) {
@@ -72,12 +101,14 @@ export function mutate(current, command, now=Date.now(), makeId=()=>crypto.rando
       upsert(body,body.id)
       break
     }
-    case 'count':
+    case 'count': {
+      const ts=body.time?countedAt(body.time):at
       for (const row of batch(body.rows)) {
         lookup(s,row.item)
-        addCount(row.item,floor(row.floor),row)
+        addCount(row.item,floor(row.floor),row,ts)
       }
       break
+    }
     case 'transfer': {
       const i=lookup(s,body.item)
       const from=floor(body.floor), to=floor(body.to), qty=whole(body.qty)
@@ -91,13 +122,32 @@ export function mutate(current, command, now=Date.now(), makeId=()=>crypto.rando
       addReceipt(i.id,floor(body.floor),whole(body.qty),num(body.price,'本次單價'),body.orderId)
       break
     }
+    case 'queueOrder': {
+      const q=num(body.qty,'叫貨草稿數量',{max:1000000,integer:true})
+      const candidate=body.candidate
+      let i
+      if (body.item) i=lookup(s,body.item)
+      else if (candidate&&q>0) {
+        const name=str(candidate.name,'建議品項名稱')
+        i=s.items.find(x=>itemKey(x.name)===itemKey(name))??upsert({name,ingredient:candidate.ingredient,category:'待採購',price:null,ml:null})
+      } else fail('找不到品項')
+      const row=s.drafts.find(x=>x.item===i.id)
+      if (q===0) s.drafts=s.drafts.filter(x=>x.item!==i.id)
+      else if (row) row.qty=q
+      else s.drafts.push({item:i.id,qty:q})
+      break
+    }
     case 'order': {
+      const planned = new Set()
       for (const row of batch(body.rows)) {
         const i=lookup(s,row.item)
+        if (planned.has(i.id)) fail('同一品項不可在同一批次重複叫貨')
+        planned.add(i.id)
         const counts=stock(s.events,i.id,at)
         const balance=FLOORS.every(f=>counts[f])?sum(FLOORS,f=>total(counts[f])):null
         event('order',i.id,{qty:whole(row.qty),received:0,closed:false,balance,batch:id,price:i.price})
       }
+      s.drafts=s.drafts.filter(d=>!planned.has(d.item))
       break
     }
     case 'closeOrder': {
@@ -127,21 +177,14 @@ export function mutate(current, command, now=Date.now(), makeId=()=>crypto.rando
     }
     case 'import': {
       const rows=batch(body.rows)
-      const seen=new Set()
-      for (const row of rows) {
+      const time=body.baseline?countedAt(body.baseline):null
+      for (const row of [...rows].sort((a,b)=>String(a.date).localeCompare(String(b.date)))) {
         const existing=s.items.find(i=>itemKey(i.name)===itemKey(row.name))
         const i=upsert({...row,price:row.price??existing?.price??null,ml:row.ml??existing?.ml??null,
           ingredient:row.ingredient||existing?.ingredient||'',category:row.category||existing?.category||''})
         const currentKey=date(row.date)
         if (currentKey>dateKey(at)) fail('盤點日期不能是未來日期')
-        const currentTs=currentKey===dateKey(at)?at:midnight(currentKey)+43200000
-        for (const f of FLOORS) {
-          if (row.counts?.[f]) {
-            const key=i.id+'|'+currentKey+'|'+f
-            if (seen.has(key)) fail(i.name+' 有相同日期與庫位的重複列')
-            seen.add(key)
-          }
-        }
+        const currentTs=time!==null?countedAt(currentKey+'T'+taipeiTime(time).slice(11)):currentKey===dateKey(at)?at:midnight(currentKey)+43200000
         if (row.previous && Object.values(row.previous).some(Boolean)) {
           const prev=date(row.previousDate)
           if (prev>=currentKey) fail('前次盤點日期須早於本次盤點')
@@ -161,6 +204,10 @@ export function mutate(current, command, now=Date.now(), makeId=()=>crypto.rando
       for (const row of batch(body.rows)) writeSale(row)
       break
     default: fail('未知操作')
+  }
+  if (historical.size) {
+    const invalid=firstInvalidTransfer(s.events,historical)
+    if (invalid) fail(lookup(s,invalid.item).name+' 回填後 '+taipeiTime(invalid.at).replace('T',' ')+' 的調撥庫存不足，請先核對歷史紀錄。')
   }
   s.applied.push(id)
   return s

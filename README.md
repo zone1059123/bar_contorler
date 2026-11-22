@@ -1,6 +1,10 @@
 # BARKEEP 酒吧營運管理
 
-繁體中文的響應式 Web 系統。桌機可看趨勢、報表和批次，手機可用底部導覽快速進入庫存與盤點。正式資料由後端共用，手機和電腦連到同一台服務就會操作同一份庫存。
+繁體中文的響應式 Web 系統。雲端版本使用 Cloudflare Workers 與 D1，GitHub 推送後可自動部署。
+
+[Cloudflare 免費雲端部署與手機加到主畫面指南](docs/cloudflare-deploy.md)
+
+桌機可看趨勢、報表和批次，手機可用底部導覽快速進入庫存總覽、快速盤點、樓層調撥及叫貨與成本。正式資料由後端共用，手機和電腦連到同一台服務就會操作同一份庫存。
 
 ## 本機啟動與手機測試
 
@@ -16,7 +20,7 @@ npm run dev
 - 電腦開啟 `http://localhost:3000`。
 - 手機與電腦連同一個 Wi-Fi，開啟 `http://<電腦的區網 IP>:3000`。Windows 用 `ipconfig` 查 IPv4，macOS 的系統設定可在 Wi-Fi 詳細資訊中查 IP。若連不到，確認作業系統允許區網連入 3000 埠，且 Wi-Fi 沒有啟用裝置隔離。
 - 首次開啟會顯示有七天盤點紀錄的「範例預覽」。這個工作區的變更在重新整理後重置。切換右上「正式庫存」，即可把自己的資料永久存到 `data/barkeep.sqlite`。正式庫存第一次使用時是空的。
-- 用 `npm run check` 做型別檢查，`npm test` 跑核心流程測試。用 `npm run sample` 重建合成範例檔。
+- 用 `npm run check` 做型別檢查，`npm test` 跑核心流程、雲端登入與雙格式備份還原測試。用 `npm run sample` 重建合成範例檔。
 
 ## 架構與資料庫
 
@@ -28,15 +32,16 @@ npm run dev
 | `server/handler.mjs`、`server/storage.mjs` | 共用 HTTP API 與資料庫讀寫。版本檢查避免不同裝置互相覆蓋，同一操作 ID 重試只入帳一次 |
 | `server/node.mjs`、`server/worker.mjs` | Node.js + SQLite 與 Cloudflare Workers + D1 入口 |
 | `migrations/0001_state.sql` | 品項、庫存事件、每日營收、版本與操作識別碼 |
+| `migrations/0002_workspace.sql` | 登入工作階段、叫貨草稿與最新操作的撤銷資料 |
 | `public/sample-inventory.*` | 合成 .xlsx、.xls 與 UTF-8 CSV 範例；Excel 檔含雙欄與逐列庫位盤點，以及營收工作表 |
 
-庫存事件保留盤點、到貨、調撥、叫貨、精確區間用量校準和核銷。資料以台北時間切日，週一為一週起點。回填過往的盤點時，如果該品項同庫位已有較新盤點或異動，系統會提示先確認日期。請由舊至新建立歷史。調撥採整支未開瓶，來源必須有足量，兩個樓層都需有盤點基準。
+庫存事件保留盤點、到貨、調撥、叫貨、精確區間用量校準和核銷。資料以台北時間切日，週一為一週起點。回填過往的盤點時，如果該品項同庫位已有較新盤點或異動，系統會請你確認日期，再依時間順序重新計算。若回填會讓既有調撥的來源庫存不足，請先核對歷史紀錄。調撥採整支未開瓶，來源必須有足量，兩個樓層都需有盤點基準。
 
 ## 匯入自己的 Excel
 
 1. 在正式庫存開「試算表匯入」，選 .xlsx、.xls 或 UTF-8 .csv。
 2. 選工作表、欄名所在列和匯入類型。雙樓層同一列選「1F / 3F 分欄」，每列一個樓層選「每列一個庫位」。營收應選營收類型。
-3. 核對以下對應。可在預覽修正容量與瓶價，或取消勾選有待確認的列，再確認匯入。
+3. 選擇台北時間的基準盤點日期與時分，核對以下對應。可在匯入預覽修改容量與瓶價，或取消勾選有待確認的列，再確認匯入。
 
 | 原檔欄位例 | 對應與計算 |
 | --- | --- |
@@ -75,10 +80,17 @@ npm run dev
 
 區間可選本週、本月或自訂。期內用量依連續盤點計算，可用日期完全相同的手動校準取代。報表會標明有缺漏或可用天數不足的紀錄。營收缺漏或為零時，相關比例會提示；部分日期有營收時會標示分母涵蓋天數。
 
+## 盤點防呆與資料備份
+
+- 快速盤點可選 1F 或 3F，開瓶剩餘比例提供快選與 0.1 微調。沒有到貨且盤點增加至少 2 支及原庫存的 50% 時，系統會請操作者再次確認。
+- 上方「撤銷」可復原最近一次一般操作。若其他裝置已更新，請先核對操作再嘗試。
+- 「系統設定」可匯出完整 JSON 或 Excel，驗證備份後可還原。清空及還原都需要輸入確認文字。每日營運資料與叫貨草稿皆在備份範圍內。
+- 推薦進酒一鍵加入跨裝置共用的叫貨草稿。建立正式叫貨批次前仍可修改數量，完成批次後會移除對應草稿。
+
 ## 自架與外部資料
 
 - 執行 `npm ci && npm run build && npm start`。正式服務可用 `PORT`、`HOST`、`DB_PATH` 配置。資料庫請掛載到持久磁碟。預設服務使用 HTTP。
-- 自架對外使用 HTTPS 與存取控制，例如在反向代理設定存取權，或在服務設定 `BAR_PASSWORD` 啟用帳號 `bar` 的 Basic Auth。反向代理保留原始 Host 與 `X-Forwarded-Proto`，也可設定 `PUBLIC_ORIGIN`（例如 `https://bar.example.com`）。
+- 自架對外使用 HTTPS 與存取控制。設定 `BAR_PASSWORD` 可啟用繁體中文登入頁與 30 天安全 Cookie，搭配 `SESSION_SECRET` 簽署憑證。部署保留 `REQUIRE_BAR_PASSWORD=true` 時，未提供密碼就會暫停正式庫存。反向代理保留原始 Host 與 `X-Forwarded-Proto`，也可設定 `PUBLIC_ORIGIN`（例如 `https://bar.example.com`）。
 - SQLite 備份可在服務停止後複製資料庫，或用 SQLite 的線上備份功能。正式資料不會寫入 Git。
-- 雲端 Worker 產物位於 `dist/server/index.js`，前端資產位於 `dist/client/`。自架 Cloudflare Worker 時綁定 `DB`（D1）與 `ASSETS`（靜態資產），套用 `migrations/0001_state.sql`，並用平台存取控制保護站點與 API。
+- 雲端 Worker 產物位於 `dist/server/index.js`，前端資產位於 `dist/client/`。自架 Cloudflare Worker 時綁定 `DB`（D1）與 `ASSETS`（靜態資產），按序套用 `migrations/` 中的 SQL。Workers Builds 可執行 `npm run deploy`，先套用 D1 遷移再發布。詳見[雲端部署指南](docs/cloudflare-deploy.md)。
 - 推薦進酒預設實際查詢中文維基百科。可設定服務端 `BRAVE_SEARCH_API_KEY` 改用 Brave Search。連線或提供者受限時會顯示狀態，並繼續提供依近期消耗及酒單缺口整理的內建推薦。
