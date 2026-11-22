@@ -14,6 +14,6 @@ REQUIRE_BAR_PASSWORD = "true"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "barkeep"
+database_name = "bar-contorler"
 database_id = "b84b43ba-02be-4fe2-8cbf-02e2c908411c"
 migrations_dir = "migrations"
