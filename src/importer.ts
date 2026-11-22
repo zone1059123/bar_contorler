@@ -54,7 +54,7 @@ function number(v:Cell) {
   const raw=clean(v).replace(/^(NT\$|\$)/i,'').replaceAll(',','').trim()
   return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw)?Number(raw):NaN
 }
-function capacity(v:Cell) {
+export function capacity(v:Cell) {
   const m=clean(v).toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(ml|毫升|l|公升)?$/)
   return m?Number(m[1])*(['l','公升'].includes(m[2])?1000:1):NaN
 }
@@ -130,7 +130,7 @@ export function buildPreview(rows:Cell[][],header:number,mode:ImportMode,mapping
     const ingredient=Object.hasOwn(INGREDIENTS,rawIngredient)?rawIngredient:Object.entries(INGREDIENTS).find(([,label])=>label===rawIngredient)?.[0]??suggestIngredient(name)
     const receiptQty=parse('receipt','進貨數',1000000,true)
     const receiptFloor=clean(get('receiptFloor'))?cellFloor(get('receiptFloor')):mode==='long'?cellFloor(get('floor')):defaults.floor
-    if(receiptQty && (price===null || !receiptFloor)) issues.push('有進貨數的列須有瓶價與合法的進貨庫位')
+    if(receiptQty && (price===null || !receiptFloor)) issues.push(!receiptFloor?'有進貨數的列須填寫有效的到貨庫位':'有進貨數的列須填寫瓶價')
     data.push({line,issues,warnings,data:{name,category:lastCategory,price,ml,ingredient,date:d,counts,previous,previousDate:defaults.previous,receiptQty,receiptFloor:receiptFloor??defaults.floor}})
   })
   return data

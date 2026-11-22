@@ -5,12 +5,14 @@ import {dateKey,midnight,period,short,money,shift} from './data'
 import type {Screen,State} from './types'
 import type {DialogState} from './workspace'
 import {Empty} from './ui'
+import {readSupply} from './supply'
 
 export function Dashboard({state,go,dialog}:{state:State;go:(screen:Screen)=>void;dialog:(d:DialogState)=>void}) {
   const [days,setDays]=useState(7),[focus,setFocus]=useState<number|null>(null)
   const today=dateKey()
   const now=Date.now()
-  const alerts=state.items.map(i=>({i,d:demand(state.events,i.id,now)})).filter(({d})=>d.urgent||(d.proposed??0)>0)
+  const {lead,buffer}=readSupply()
+  const alerts=state.items.map(i=>({i,d:demand(state.events,i.id,now,lead,buffer)})).filter(({d})=>d.urgent||(d.proposed??0)>0)
     .sort((a,b)=>Number(b.d.urgent)-Number(a.d.urgent)||(a.d.days??Infinity)-(b.d.days??Infinity))
   const totalInventory=state.items.reduce((a,i)=>{const s=stock(state.events,i.id);return a+(total(s['1F'])??0)+(total(s['3F'])??0)},0)
   const weekly=costReport(state,midnight(period('week').start),midnight(today)+DAY)

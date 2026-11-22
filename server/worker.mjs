@@ -1,14 +1,15 @@
-import { api } from './handler.mjs'
+import {api} from './handler.mjs'
+
 export default {
   async fetch(request,env) {
     try {
       const url=new URL(request.url)
       if (url.pathname.startsWith('/api/')) return await api(request,env)
       if (env.ASSETS) return env.ASSETS.fetch(request)
-      return new Response('Frontend assets binding unavailable.',{status:503})
+      return new Response('網站資源尚未綁定。',{status:503})
     } catch (error) {
-      console.error(error)
-      return Response.json({message:'資料庫暫時無法使用'},{status:500})
+      console.error('BARKEEP request failed',error)
+      return Response.json({message:'正式庫存服務暫時無法使用，請稍後重試。'},{status:500,headers:{'Cache-Control':'no-store'}})
     }
   }
 }

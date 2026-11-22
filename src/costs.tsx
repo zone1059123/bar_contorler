@@ -27,6 +27,9 @@ export function Costs({state,onDialog}:{state:State;onDialog:(d:DialogState)=>vo
   const report=valid?costReport(state,start,end,basis,salesType):null
   const values=report?[report.purchases,report.use,report.cogs,report.totalCost]:[]
   const revenue=report?.revenue??null
+  const elapsed=Math.max(0,(Math.min(end,Date.now())-start)/DAY)
+  const partial=report?.rows.filter(row=>!row.calibrated&&row.h.days+0.0001<elapsed).length??0
+  const missingPrice=report?.rows.filter(row=>row.item.price===null).length??0
   function exportReport(format:'xlsx'|'csv') {
     if(!report)return
     void download('成本統計-'+dates.start+'-'+dates.end,[{name:'成本與銷售比',rows:[
@@ -43,11 +46,11 @@ export function Costs({state,onDialog}:{state:State;onDialog:(d:DialogState)=>vo
     </div>
     {!report?<div className="notice danger">請選擇有效日期，結束日不可早於起日或晚於今天。</div>:<>
       <div className="notice"><ChartNoAxesColumnIncreasing size={18}/><div>期間營收 <strong>{money(revenue)}</strong> · 已填 {report.revenueDays}/{report.expectedDays} 日。{revenue===null?' 請登記或匯入營收才能計算銷售比。':revenue<=0?' 銷售額為 0，銷售比暫不顯示。':report.revenueDays<report.expectedDays?' 銷售比暫按已填營收計算，請補齊整個期間再比較。':''}
-      {(report.missingUse>0||report.missingCogs>0)&&<div>使用成本 {report.missingUse} 項待補，COGS {report.missingCogs} 項待補，相關合計依已知項目計算。</div>}</div></div>
+      {(report.missingUse>0||report.missingCogs>0)&&<div>使用成本 {report.missingUse} 項待補，COGS {report.missingCogs} 項待補，合計依已知紀錄計算。</div>}{(partial>0||missingPrice>0)&&<div>盤點涵蓋不足 {partial} 項，瓶價待補 {missingPrice} 項。</div>}</div></div>
       <div className="metric-grid">{metricDefinitions.map((m,i)=><article className="metric-card cost-card" key={m.name}><span className={'metric-icon '+m.tone}><m.icon size={19}/></span><span>{m.name}</span><strong>{money(values[i])}</strong><div className="ratio"><span>銷售比</span><b>{pct(ratio(values[i],revenue))}</b></div><p>{m.description}</p><details><summary><CircleHelp size={14}/>公式與口徑</summary><p>{m.formula}</p><p>{m.name}銷售比＝{m.name} ÷ 期間{salesType==='beverage'?'酒水銷售額':'總銷售額'} × 100%。</p></details></article>)}</div>
       <section className="panel">
-        <div className="section-head"><div><h2>品項用量與成本</h2><p>{dates.start} 至 {dates.end} · 台北時間</p></div><div className="actions"><button className="btn" disabled={!state.items.length} onClick={()=>onDialog({kind:'calibration'})}>校準用量</button><button className="btn" disabled={!state.items.length} onClick={()=>onDialog({kind:'cogs'})}>登記核銷</button></div></div>
-        {report.rows.length?<div className="scroll-table"><table><thead><tr><th>品項</th><th>每瓶進價</th><th>每 ml 單價</th><th>期間用量</th><th>進貨成本</th><th>使用成本</th><th>COGS</th></tr></thead><tbody>{report.rows.map(r=><tr key={r.item.id}><td><strong>{r.item.name}</strong><small className="block">{r.item.ml==null?'容量待補':short(r.item.ml)+' ml'}</small></td><td>{money(r.item.price)}</td><td>{r.item.price!=null&&r.item.ml!=null?money(r.item.price/r.item.ml).split(' ')[0]+' '+short(r.item.price/r.item.ml,6):'—'}</td><td>{r.used===null?'資料待補':short(r.used,4)+' 支'}<small className="block">{r.calibrated?'手動校準':r.h.anomaly?'含盤點差異':r.used!==null?'涵蓋 '+short(r.h.days)+' 天':''}{r.ml!==null?' · '+short(r.ml)+' ml':''}</small></td><td>{money(r.receiving)}</td><td>{money(r.usageCost)}</td><td>{money(r.cogs)}</td></tr>)}</tbody></table></div>:<Empty title="尚無品項用量"/>}
+        <div className="section-head"><div><h2>品項用量與成本</h2><p>{dates.start} 至 {dates.end} · 台北時間 · 每週一開始</p></div><div className="actions"><button className="btn" disabled={!state.items.length} onClick={()=>onDialog({kind:'calibration'})}>校準用量</button><button className="btn" disabled={!state.items.length} onClick={()=>onDialog({kind:'cogs'})}>登記核銷</button></div></div>
+        {report.rows.length?<div className="scroll-table"><table><thead><tr><th>品項</th><th>每瓶進價</th><th>每 ml 單價</th><th>期間用量</th><th>進貨成本</th><th>使用成本</th><th>COGS</th></tr></thead><tbody>{report.rows.map(r=><tr key={r.item.id}><td><strong>{r.item.name}</strong><small className="block">{r.item.ml==null?'容量待補':short(r.item.ml)+' ml'}</small></td><td>{r.item.price===null?<span className="badge amber">瓶價待補</span>:money(r.item.price)}</td><td>{r.item.price!=null&&r.item.ml!=null?'NT$ '+short(r.item.price/r.item.ml,6):'—'}</td><td>{r.used===null?'資料待補':short(r.used,4)+' 支'}<small className="block">{r.calibrated?'手動校準':r.h.anomaly?'有異常盤點區間':r.used!==null?'涵蓋 '+short(r.h.days)+' 天'+(r.h.days+.0001<elapsed?'，資料不足':''):''}{r.ml!==null?' · '+short(r.ml)+' ml':''}</small></td><td>{money(r.receiving)}</td><td>{money(r.usageCost)}</td><td>{money(r.cogs)}</td></tr>)}</tbody></table></div>:<Empty title="尚無品項用量"/>}
       </section>
       <details className="panel formula-panel"><summary>用量與總成本口徑</summary><p>用量＝期初庫存＋期間進貨−期末庫存。以雙樓層連續盤點估算，樓層調撥在各庫位一加一減。跨日期的盤點區間按時間分攤；缺少盤點的時間留空，負用量區間標為差異。指定期間可用實際用量校準。</p><p>每 ml 單價＝每瓶進價 ÷ 容量（ml）。容量缺漏時仍可依瓶價計算瓶數成本。其他成本目前登記 {money(report.extra)}；總成本使用所選 COGS 口徑與其他成本。</p></details>
     </>}
