@@ -7,7 +7,7 @@
 需要 Node.js 22.13 以上（建議 Node.js 24 LTS）和 npm。
 
 ```bash
-git clone https://github.com/zone1059123/bar_contorler.git
+git clone --branch barkeep-app https://github.com/zone1059123/bar_contorler.git
 cd bar_contorler
 npm ci
 npm run dev
