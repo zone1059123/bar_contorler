@@ -1,5 +1,6 @@
 import {empty,mutate} from './commands.mjs'
 import {readState,readUndo,writeState} from './storage.mjs'
+import {lookupCapacity} from './capacity.mjs'
 import {session,login,logout} from './auth.mjs'
 import {BACKUP_LIMIT,backupDocument,validateBackup} from './backup.mjs'
 import {inverseChanges,revertChanges} from './undo.mjs'
@@ -66,17 +67,23 @@ export async function api(request,env,{client}={}) {
     return output({authenticated:result.status===200,message:result.message},result.status,result.cookie?{'Set-Cookie':result.cookie}:{})
   }
   if (path==='/api/logout' && request.method==='POST') return output({authenticated:false},200,{'Set-Cookie':await logout(request,env,currentSession)})
-  if (path==='/api/search' && request.method==='GET') {
-    const query=(url.searchParams.get('q')??'').trim().slice(0,100)
-    if (!query) return output({message:'請輸入查詢關鍵字。'},400)
-    try {return output(await search(query,currentSession.authenticated?env.BRAVE_SEARCH_API_KEY:undefined))}
-    catch {return output({message:'目前無法連線至外部搜尋。內建的進酒建議仍可使用。'},503)}
-  }
-  if (!['/api/state','/api/backup'].includes(path)) return output({message:'找不到指定功能。'},404)
-  if (!currentSession.authenticated) {
+  if (!currentSession.authenticated && ['/api/search','/api/item-capacity','/api/state','/api/backup'].includes(path)) {
     const setup=currentSession.mode==='unconfigured'
     return output({code:setup?'setup':'login',message:setup?'部署尚未設定工作區密碼，正式庫存暫不開放。':'請先登入正式庫存。'},setup?503:401)
   }
+  if (path==='/api/item-capacity' && request.method==='GET') {
+    const name=url.searchParams.get('name')?.trim()??''
+    if (name.length<2||name.length>120) return output({message:'請輸入 2 至 120 個字的品項名稱。'},400)
+    try {return output(await lookupCapacity(name,env.BRAVE_SEARCH_API_KEY))}
+    catch(error) {return output({message:error.message},503)}
+  }
+  if (path==='/api/search' && request.method==='GET') {
+    const query=(url.searchParams.get('q')??'').trim().slice(0,100)
+    if (!query) return output({message:'請輸入查詢關鍵字。'},400)
+    try {return output(await search(query,env.BRAVE_SEARCH_API_KEY))}
+    catch {return output({message:'目前無法連線至外部搜尋。內建的進酒建議仍可使用。'},503)}
+  }
+  if (!['/api/state','/api/backup'].includes(path)) return output({message:'找不到指定功能。'},404)
   if (path==='/api/backup' && request.method==='GET') {
     const {state}=await readState(env.DB)
     return output(backupDocument(state))

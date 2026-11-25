@@ -2,7 +2,7 @@ import {LockKeyhole, Wine} from 'lucide-react'
 import {Field,Form} from './ui'
 import {responseData} from './client'
 
-export function Login({onLogin,onDemo}:{onLogin:()=>void;onDemo:()=>void}) {
+export function Login({onLogin}:{onLogin:()=>void}) {
   return <section className="login-layout" aria-labelledby="login-heading">
     <div className="login-brand"><Wine size={28}/><strong>BARKEEP</strong></div>
     <div className="panel login-card">
@@ -14,7 +14,6 @@ export function Login({onLogin,onDemo}:{onLogin:()=>void;onDemo:()=>void}) {
       }}>
         <Field label="工作區密碼"><input name="password" type="password" autoComplete="current-password" maxLength={512} required autoFocus/></Field>
       </Form>
-      <button type="button" className="text-button" onClick={onDemo}>返回範例預覽</button>
     </div>
   </section>
 }

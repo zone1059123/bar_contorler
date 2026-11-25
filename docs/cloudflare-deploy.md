@@ -35,7 +35,7 @@ flowchart LR
 | `SESSION_SECRET` | Secret，建議設定 | 另一組隨機值，供登入憑證簽署。可用密碼管理器產生至少 32 字元 |
 | `BRAVE_SEARCH_API_KEY` | Secret，選填 | 已登入的推薦進酒查詢優先使用 Brave Search。留白時使用中文維基百科 |
 
-密碼會在 HTTPS 下載入有效期 30 天的登入 Cookie。更換 `BAR_PASSWORD` 或 `SESSION_SECRET` 會讓各裝置的現有登入失效；「系統設定」的登出則只撤銷該裝置的目前登入。未填密碼時，部署到 `workers.dev` 的版本會暫停正式庫存存取，範例預覽照常可用。
+密碼會在 HTTPS 下載入有效期 30 天的登入 Cookie。更換 `BAR_PASSWORD` 或 `SESSION_SECRET` 會讓各裝置的現有登入失效；「系統設定」的登出則只撤銷該裝置的目前登入。未填密碼時，部署到 `workers.dev` 的版本會暫停正式庫存存取。
 
 [Cloudflare Worker Secrets 文件](https://developers.cloudflare.com/workers/configuration/secrets/)
 
@@ -66,8 +66,8 @@ flowchart LR
 1. 到 Worker 的 **Deployments** 或 **Builds** 查看第一次部署。若剛連結 GitHub 而尚未觸發，對 `barkeep-app` 推送一筆提交。
 2. 成功的日誌會先出現 `wrangler d1 migrations apply DB --remote` 的結果，再出現 Worker 部署網址。之後的推送只套用尚未執行的 SQL。
 3. 在 Worker **Bindings** 核對 D1 綁定名稱為 `DB`，資料庫為上面建立的 `barkeep`。到 D1 的 **Tables** 可看到 `items`、`inventory_events`、`sales` 等資料表。
-4. 用 HTTPS 網址開啟首頁，切換「正式庫存」，輸入剛設定的密碼。新資料庫第一次會是空的。若從舊站搬遷，在「系統設定 → 從備份檔還原」上傳原本的 JSON 或 Excel 完整備份，核對預覽筆數並確認。
-5. 用第二個裝置開啟相同的 HTTPS 網址，切換正式庫存並登入。第一個裝置儲存後，第二個裝置切回畫面會重新同步，停留在網頁時約每 20 秒檢查一次。正在填寫盤點表單時先保留畫面；若儲存時另一台裝置已更新，會提示重新核對。
+4. 用 HTTPS 網址開啟首頁，輸入剛設定的工作區密碼。新資料庫第一次會是空的。若從舊站搬遷，在「系統設定 → 從備份檔還原」上傳原本的 JSON 或 Excel 完整備份，核對預覽筆數並確認。
+5. 用第二個裝置開啟相同的 HTTPS 網址，登入正式庫存。第一個裝置儲存後，第二個裝置切回畫面會重新同步，停留在網頁時約每 20 秒檢查一次。正在填寫盤點表單時先保留畫面；若儲存時另一台裝置已更新，會提示重新核對。
 
 根目錄 `wrangler.toml` 也能由維護者用 CLI 部署。完成 Wrangler 登入後，可在檔案填入 D1 ID，或提供建置環境變數 `D1_DATABASE_ID`，再執行 `npm ci`、`npm run build`、`npm run deploy`。日常使用或 GitHub 自動部署時不需啟動本機伺服器。
 
@@ -80,7 +80,7 @@ flowchart LR
 | iPhone / iPad | Safari 開啟正式 HTTPS 網址 → **分享** → **加入主畫面** → 若看到「以 Web App 開啟」就啟用 → **加入** |
 | Android | Chrome 開啟正式 HTTPS 網址 → 右上 **⋮** → **加到主畫面** 或 **安裝應用程式** → **加入／安裝** |
 
-從主畫面點選 BARKEEP 圖示，切換正式庫存並輸入密碼。部分 iPhone 或 Android 版本會把主畫面 Web App 當作另一個瀏覽工作階段，第一次從圖示開啟時可能需要再登入一次。日後可在登入有效期內直接開啟，清除網站資料或手動登出後需再登入。盤點、還原與同步需連線。
+從主畫面點選 BARKEEP 圖示，直接輸入工作區密碼。部分 iPhone 或 Android 版本會把主畫面 Web App 當作另一個瀏覽工作階段，第一次從圖示開啟時可能需要再登入一次。日後可在登入有效期內直接開啟，清除網站資料或手動登出後需再登入。盤點、還原與同步需連線。
 
 [iPhone 將網站加入主畫面](https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios) · [Chrome 安裝網頁應用程式](https://support.google.com/chrome/answer/9658361)
 
