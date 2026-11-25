@@ -1,7 +1,6 @@
 import {useEffect,useRef,useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {ArrowLeftRight,BarChart3,Boxes,CalendarDays,ChevronRight,CircleCheck,ClipboardList,House,Layers,Martini,Menu,Settings as SettingsIcon,ShoppingCart,Sparkles,Undo2,Upload,Wine,X} from 'lucide-react'
-import {empty,mutate} from '../server/commands.mjs'
 import {Dashboard} from './dashboard'
 import {Inventory,InventoryDialog} from './inventory'
 import {Orders} from './orders'
@@ -12,7 +11,6 @@ import {Login} from './login'
 import {Settings} from './settings'
 import {ApiError,responseData} from './client'
 import {Form,Modal} from './ui'
-import {sample} from './data'
 import type {Screen,State} from './types'
 import type {DialogState} from './workspace'
 import './styles.css'
@@ -42,9 +40,6 @@ function App() {
   const [screen,setScreen]=useState<Screen>(initialScreen)
   const [dialog,setDialog]=useState<DialogState|null>(null)
   const [open,setOpen]=useState(false),[toast,setToast]=useState('')
-  const [mode,setMode]=useState<'demo'|'real'>(()=>localStorage.getItem('barkeep-mode')==='real'?'real':'demo')
-  const [demo,setDemo]=useState<State>(()=>sample())
-  const [demoUndo,setDemoUndo]=useState<{state:State;kind:string}|null>(null)
   const [real,setReal]=useState<ServerData|null>(null)
   const [access,setAccess]=useState<Access|null>(null)
   const [failure,setFailure]=useState('')
@@ -54,8 +49,7 @@ function App() {
   const holdRefresh=useRef(false)
   holdRefresh.current=Boolean(dialog||undo)
   const revision=useRef<number|null>(null)
-  const state=mode==='real'?real?.state??empty():demo
-  const latest=mode==='real'?real?.undo:demoUndo?.kind
+  const latest=real?.undo
   const title=pages.find(p=>p.id===screen)!.label
 
   function go(next:Screen) {
@@ -85,16 +79,6 @@ function App() {
     revision.current=null
     setReal(null)
   }
-  function changeMode(next:'demo'|'real') {
-    if(next===mode)return
-    clearReal()
-    setAccess(null)
-    setFailure('')
-    setDialog(null)
-    setUndo(null)
-    setMode(next)
-    localStorage.setItem('barkeep-mode',next)
-  }
   async function load(quiet=false) {
     const version=generation.current
     if(!quiet)setFailure('')
@@ -103,7 +87,10 @@ function App() {
         const info:Access=await responseData(await fetch('/api/session'))
         if(version!==generation.current)return
         setAccess(info)
-        if(!info.authenticated) return
+        if(!info.authenticated) {
+          if(revision.current!==null) clearReal()
+          return
+        }
       }
       const since=quiet&&revision.current!==null?'?since='+revision.current:''
       const r=await fetch('/api/state'+since)
@@ -120,7 +107,6 @@ function App() {
     }
   }
   useEffect(()=>{
-    if(mode!=='real') return
     void load()
     const refresh=()=>{if(document.visibilityState==='visible'&&revision.current!==null&&!writing.current&&!holdRefresh.current)void load(true)}
     const timer=setInterval(refresh,20000)
@@ -132,7 +118,7 @@ function App() {
       window.removeEventListener('focus',refresh)
       document.removeEventListener('visibilitychange',refresh)
     }
-  },[mode])
+  },[])
 
   async function logout() {
     await responseData(await fetch('/api/logout',{method:'POST'}))
@@ -143,48 +129,39 @@ function App() {
 
   async function save(kind:string,body:unknown,expected?:number) {
     const id=globalThis.crypto?.randomUUID?.()??Date.now().toString(36)+Math.random().toString(36).slice(2)
-    if(mode==='demo') {
-      if(kind==='undo') {
-        if(!demoUndo)throw new Error('目前沒有可撤銷的操作。')
-        setDemo(demoUndo.state)
-        setDemoUndo(null)
-      } else {
-        const next=mutate(demo,{kind,body,id},Date.now(),()=>globalThis.crypto?.randomUUID?.()??Math.random().toString(36).slice(2))
-        setDemoUndo({state:demo,kind})
-        setDemo(next)
+    if(revision.current===null||!access?.authenticated||failure)throw new Error('請先重新載入正式庫存。')
+    if(writing.current)throw new Error('上一筆操作正在儲存，請稍後再試。')
+    const version=generation.current
+    writing.current=true
+    try {
+      const options={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,body,id,revision:expected??revision.current})}
+      let response
+      try{response=await fetch('/api/state',options)}catch{response=await fetch('/api/state',options)}
+      if(response.status===409) {
+        const conflict=await response.json()
+        if(version===generation.current)receive(conflict)
+        throw new ApiError(expected===undefined?conflict.message:'另一個裝置已更新。請關閉確認視窗，核對最新資料後重新操作。','conflict')
       }
-    } else {
-      if(revision.current===null||!access?.authenticated||failure)throw new Error('請先重新載入正式庫存。')
-      if(writing.current)throw new Error('上一筆操作正在儲存，請稍後再試。')
-      const version=generation.current
-      writing.current=true
-      try {
-        const options={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,body,id,revision:expected??revision.current})}
-        let response
-        try{response=await fetch('/api/state',options)}catch{response=await fetch('/api/state',options)}
-        if(response.status===409) {
-          const conflict=await response.json()
-          if(version===generation.current)receive(conflict)
-          throw new ApiError(expected===undefined?conflict.message:'另一個裝置已更新。請關閉確認視窗，核對最新資料後重新操作。','conflict')
-        }
-        const data=await responseData(response)
-        if(version===generation.current)receive(data)
-      } catch(error) {
-        if(error instanceof ApiError&&error.code==='login'&&version===generation.current) {
-          clearReal()
-          setAccess(info=>({mode:'password',authenticated:false,storage:info?.storage??'cloud'}))
-          setDialog(null);setUndo(null)
-        }
-        throw error
-      } finally {writing.current=false}
-    }
+      const data=await responseData(response)
+      if(version===generation.current)receive(data)
+    } catch(error) {
+      if(error instanceof ApiError&&error.code==='login'&&version===generation.current) {
+        clearReal()
+        setAccess(info=>({mode:'password',authenticated:false,storage:info?.storage??'cloud'}))
+        setDialog(null);setUndo(null)
+      }
+      throw error
+    } finally {writing.current=false}
     setToast(kind==='queueOrder'?'已更新叫貨草稿':(actions[kind]??'變更')+'完成')
   }
 
   const date=new Intl.DateTimeFormat('zh-TW',{month:'long',day:'numeric',weekday:'long',timeZone:'Asia/Taipei'}).format(new Date())
-  const locked=mode==='real'&&access?.mode==='password'&&!access.authenticated
-  const unconfigured=mode==='real'&&access?.mode==='unconfigured'
-  const ready=mode==='demo'||Boolean(real)
+  if(access?.mode==='password'&&!access.authenticated) return <main className="content"><Login onLogin={()=>void load()}/></main>
+  if(!real) return <main className="content">
+    {access?.mode==='unconfigured'?<div className="notice danger" role="alert">尚未設定工作區密碼。請管理者設定 BAR_PASSWORD 後重新開啟此頁。</div>:
+      <div className={'notice'+(failure?' danger':'')} role="status">{failure||'正在載入正式庫存…'}{failure&&<button className="btn" onClick={()=>void load()}>重試</button>}</div>}
+  </main>
+  const state=real.state
   return <div className="app">
     {open&&<button className="scrim" aria-label="關閉導覽" onClick={()=>setOpen(false)}/>}
     <aside className={'sidebar'+(open?' open':'')}>
@@ -199,27 +176,19 @@ function App() {
         <div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="開啟導覽" onClick={()=>setOpen(true)}><Menu size={23}/></button><span className="crumb-parent">工作區</span><ChevronRight size={15} className="crumb-chevron"/><strong>{title}</strong></div>
         <div className="top-meta">
           <span className="today"><CalendarDays size={16}/>{date}</span>
-          {ready&&latest&&<button className="btn undo-button" aria-label="撤銷上一筆操作" title="撤銷上一筆操作" onClick={()=>setUndo({kind:latest,revision:real?.revision})}><Undo2 size={17}/><span>撤銷</span></button>}
-          <label className="mode"><span className={mode==='real'?'mode-dot real':'mode-dot'}/><select aria-label="工作區模式" value={mode} onChange={e=>changeMode(e.target.value as 'demo'|'real')}><option value="demo">範例預覽</option><option value="real">正式庫存</option></select></label>
+          {latest&&<button className="btn undo-button" aria-label="撤銷上一筆操作" title="撤銷上一筆操作" onClick={()=>setUndo({kind:latest,revision:real.revision})}><Undo2 size={17}/><span>撤銷</span></button>}
         </div>
       </header>
       <main className="content">
-        {locked?<Login onLogin={()=>void load()} onDemo={()=>changeMode('demo')}/>:unconfigured?
-          <div className="notice danger">部署尚未設定工作區密碼，正式庫存暫不開放。<button className="btn" onClick={()=>changeMode('demo')}>返回範例預覽</button></div>
-        :<>
-          {!ready&&<div className={'notice'+(failure?' danger':'')} role="status">{failure||'正在載入正式庫存…'}{failure&&<button className="btn" onClick={()=>void load()}>重試</button>}</div>}
-          {(ready||(screen==='import'&&access?.authenticated))&&<>
-            {(screen==='orders'||screen==='costs')&&<div className="segmented finance-nav" aria-label="叫貨與成本"><button className={screen==='orders'?'active':''} onClick={()=>go('orders')}>智慧叫貨</button><button className={screen==='costs'?'active':''} onClick={()=>go('costs')}>成本分析</button></div>}
-            {screen==='overview'&&<Dashboard state={state} go={go} dialog={setDialog}/>}
-            {screen==='inventory'&&<Inventory state={state} onDialog={setDialog} onImport={()=>go('import')}/>}
-            {screen==='orders'&&<Orders key={mode} state={state} save={save} onDialog={setDialog}/>}
-            {screen==='costs'&&<Costs state={state} onDialog={setDialog}/>}
-            {screen==='recipes'&&<Recipes state={state}/>}
-            {screen==='recommend'&&<Recommend state={state} save={save} onOrders={()=>go('orders')}/>}
-            {screen==='settings'&&<Settings revision={real?.revision} real={mode==='real'} storage={access?.storage??'cloud'} password={access?.mode==='password'} onReal={()=>changeMode('real')} onLogout={logout} save={save}/>}
-          </>}
-        </>}
-        {screen==='import'&&<div className="import-screen" hidden={!ready}><ImportScreen save={save} complete={m=>go(m==='sales'?'costs':'inventory')} realMode={mode==='real'} onReal={()=>changeMode('real')} ready={ready}/></div>}
+        {(screen==='orders'||screen==='costs')&&<div className="segmented finance-nav" aria-label="叫貨與成本"><button className={screen==='orders'?'active':''} onClick={()=>go('orders')}>智慧叫貨</button><button className={screen==='costs'?'active':''} onClick={()=>go('costs')}>成本分析</button></div>}
+        {screen==='overview'&&<Dashboard state={state} go={go} dialog={setDialog}/>}
+        {screen==='inventory'&&<Inventory state={state} onDialog={setDialog} onImport={()=>go('import')}/>}
+        {screen==='orders'&&<Orders state={state} save={save} onDialog={setDialog}/>}
+        {screen==='costs'&&<Costs state={state} onDialog={setDialog}/>}
+        {screen==='recipes'&&<Recipes state={state}/>}
+        {screen==='recommend'&&<Recommend state={state} save={save} onOrders={()=>go('orders')}/>}
+        {screen==='settings'&&<Settings revision={real.revision} storage={access?.storage??'cloud'} password={access?.mode==='password'} onLogout={logout} save={save}/>}
+        {screen==='import'&&<ImportScreen save={save} complete={m=>go(m==='sales'?'costs':'inventory')}/>}
       </main>
       <nav className="mobile-nav" aria-label="吧台快捷功能">
         <button className={screen==='inventory'&&!dialog?'active':''} onClick={()=>go('inventory')}><Boxes size={22}/>庫存總覽</button>
@@ -228,8 +197,8 @@ function App() {
         <button className={screen==='orders'||screen==='costs'?'active':''} onClick={()=>go(screen==='costs'?'costs':'orders')}><ShoppingCart size={22}/>叫貨與成本</button>
       </nav>
     </div>
-    {ready&&dialog&&(['sale','calibration','cogs'].includes(dialog.kind)?<CostDialog dialog={dialog} state={state} save={save} close={()=>setDialog(null)}/>:<InventoryDialog dialog={dialog} state={state} save={save} close={()=>setDialog(null)}/>)}
-    {ready&&undo&&<Modal title="撤銷上一筆操作" onClose={()=>setUndo(null)}><Form label="確認撤銷" onDone={()=>setUndo(null)} onSubmit={()=>save('undo',{},undo.revision)}><p>要撤銷最近一次「{actions[undo.kind]??undo.kind}」嗎？若其他裝置剛更新，請重新核對最新操作。</p></Form></Modal>}
+    {dialog&&(['sale','calibration','cogs'].includes(dialog.kind)?<CostDialog dialog={dialog} state={state} save={save} close={()=>setDialog(null)}/>:<InventoryDialog dialog={dialog} state={state} save={save} close={()=>setDialog(null)}/>)}
+    {undo&&<Modal title="撤銷上一筆操作" onClose={()=>setUndo(null)}><Form label="確認撤銷" onDone={()=>setUndo(null)} onSubmit={()=>save('undo',{},undo.revision)}><p>要撤銷最近一次「{actions[undo.kind]??undo.kind}」嗎？若其他裝置剛更新，請重新核對最新操作。</p></Form></Modal>}
     {toast&&<div className="toast" role="status"><CircleCheck size={20}/>{toast}</div>}
   </div>
 }

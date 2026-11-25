@@ -1,12 +1,13 @@
 import {useState} from 'react'
 import {ArrowLeftRight,ClipboardList,Edit3,PackagePlus,Plus,Upload,History} from 'lucide-react'
-import {stock,total,suggestIngredient} from '../server/model.mjs'
+import {stock,total} from '../server/model.mjs'
 import {floorLabel, type DialogState} from './workspace'
 import type {Entry,Floor,Item,Save,Slot,State} from './types'
-import {dateKey, taipeiTime, parseTaipeiTime, floors, ingredientLabel, INGREDIENTS, money, short} from './data'
+import {dateKey, taipeiTime, parseTaipeiTime, floors, ingredientLabel, money, short} from './data'
 import {Empty,ExportMenu,Field,Form,Heading,Modal,SearchBox,text,val} from './ui'
 import {download} from './sheets'
 import {ApiError} from './client'
+import {ItemEditor} from './item-editor'
 
 export function Inventory({state,onDialog,onImport}:{state:State;onDialog:(d:DialogState)=>void;onImport:()=>void}) {
   const [floor,setFloor]=useState<Floor|'all'>('all')
@@ -133,12 +134,7 @@ export function InventoryDialog({dialog,state,save,close}:{dialog:DialogState;st
   const [floor,setFloor]=useState<Floor>(dialog.floor??'1F')
   if(dialog.kind==='count')return <CountDialog dialog={dialog} state={state} save={save} close={close}/>
   const i=state.items.find(x=>x.id===id)
-  if(dialog.kind==='item')return <Modal title={i?'編輯品項':'新增品項'} onClose={close}><Form onDone={close} onSubmit={d=>save('item',{id:i?.id,name:text(d,'name'),category:text(d,'category'),price:val(d,'price'),ml:val(d,'ml'),ingredient:text(d,'ingredient')||suggestIngredient(text(d,'name'))})}>
-    <Field label="品項名稱"><input name="name" required maxLength={120} defaultValue={i?.name}/></Field>
-    <Field label="分類"><input name="category" maxLength={80} defaultValue={i?.category}/></Field>
-    <div className="field-grid"><Field label="每瓶進價（NT$）"><input name="price" type="number" step="any" min="0" defaultValue={i?.price??''}/></Field><Field label="瓶裝容量（ml）"><input name="ml" type="number" step="any" min="1" defaultValue={i?.ml??''}/></Field></div>
-    <Field label="酒譜材料對應"><select name="ingredient" defaultValue={i?.ingredient??''}><option value="">依名稱自動辨識</option>{Object.entries(INGREDIENTS).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}</select></Field>
-  </Form></Modal>
+  if(dialog.kind==='item')return <ItemEditor item={i} save={save} close={close}/>
   if(dialog.kind==='transfer') {
     const s=i?stock(state.events,i.id):null
     const available=s?.[floor]?.whole??0

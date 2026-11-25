@@ -8,7 +8,7 @@ import {Empty,Field,Heading} from './ui'
 import {FloorSelect} from './inventory'
 import {ApiError} from './client'
 
-export function ImportScreen({save,complete,realMode,onReal,ready}:{save:Save;complete:(mode:ImportMode)=>void;realMode:boolean;onReal:()=>void;ready:boolean}) {
+export function ImportScreen({save,complete}:{save:Save;complete:(mode:ImportMode)=>void}) {
   const input=useRef<HTMLInputElement>(null)
   const [book,setBook]=useState<Sheet[]>([]),[file,setFile]=useState(''),[idx,setIdx]=useState(0),[header,setHeader]=useState(0)
   const [mode,setMode]=useState<ImportMode>('wide'),[mapping,setMapping]=useState<Mapping>({})
@@ -54,7 +54,7 @@ export function ImportScreen({save,complete,realMode,onReal,ready}:{save:Save;co
   const errors=selected.filter(row=>issues(row).length)
   const time=parseTaipeiTime(baseline)
   const validBaseline=mode==='sales'||(Number.isFinite(time)&&time<=Date.now())
-  const canSubmit=ready&&selected.length>0&&selected.length<=1500&&!errors.length&&validBaseline
+  const canSubmit=selected.length>0&&selected.length<=1500&&!errors.length&&validBaseline
   const resetEdits=()=>{setOverrides({});setSkips([]);setError('');resetConfirmation()}
   function choose(b:Sheet[],s:number,h:number,m:ImportMode) {
     setBook(b);setIdx(s);setHeader(h);setMode(m);setMapping(mappingFor(b[s]?.rows[h]??[],m));resetEdits()
@@ -88,7 +88,6 @@ export function ImportScreen({save,complete,realMode,onReal,ready}:{save:Save;co
     <Heading title="試算表匯入" description="選取工作表並對應欄位，可在匯入預覽修改容量與瓶價。">
       <a className="btn" href="/sample-inventory.xlsx" download><FileDown size={16}/>範例工作簿</a><a className="btn" href="/sample-inventory.csv" download><Download size={16}/>範例 CSV</a>
     </Heading>
-    {!realMode&&<div className="notice"><span>目前在範例預覽，這次匯入只會寫入範例工作區。</span><button className="btn" onClick={onReal}>切換正式庫存</button></div>}
     <section className="panel upload-panel">
       <input ref={input} type="file" accept=".xlsx,.xls,.csv" hidden onChange={e=>{void open(e.target.files?.[0]);e.target.value=''}}/>
       <div className={'drop-zone'+(drag?' dragging':'')} onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);void open(e.dataTransfer.files[0])}}>
